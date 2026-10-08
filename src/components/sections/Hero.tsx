@@ -2,9 +2,7 @@
 
 import { useSyncExternalStore, type CSSProperties } from "react";
 import { HeroScrub } from "@/components/ui/hero-scrub";
-
-const FRAME_URL = (i: number) =>
-  `/frames-hero/frame_${String(i + 1).padStart(4, "0")}.webp`;
+import { frameUrl } from "@/lib/frames";
 
 // const SERVICES = [
 //   {
@@ -111,7 +109,7 @@ export default function Hero() {
     <HeroScrub
       id="home"
       frameCount={450}
-      frameUrl={FRAME_URL}
+      frameUrl={frameUrl}
       titleTop="KANHA"
       titleBottom="JATTHAP"
       accentHex="#fbbf24"

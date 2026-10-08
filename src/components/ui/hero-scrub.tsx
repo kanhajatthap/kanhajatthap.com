@@ -26,10 +26,16 @@ type HeroScrubProps = {
   children?: ReactNode | ((progress: number) => ReactNode);
 };
 
-type FrameEntry = { img: HTMLImageElement | null; loaded: boolean; decoding: boolean };
+type FrameEntry = {
+  img: HTMLImageElement | null;
+  loaded: boolean;
+  decoding: boolean;
+  attempts: number;
+};
 
 const BUFFER = 24;
 const INITIAL_PRELOAD = 30;
+const MAX_ATTEMPTS = 3;
 
 function subscribeReduced(callback: () => void) {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -64,12 +70,12 @@ export function HeroScrub({
   const progressRef = useRef(0);
   const loadedCountRef = useRef(0);
   const readyRef = useRef(false);
-  const allLoadedRef = useRef(false);
+  const scrollLockedRef = useRef(true);
 
-  const [progress, setProgress] = useState(0);
   const [loaded, setLoaded] = useState(0);
-  const [windowReady, setWindowReady] = useState(false);
+  const [failedCount, setFailedCount] = useState(0);
   const [isReady, setIsReady] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const needsProgressState =
     typeof children === "function" || titleMotion !== undefined;
@@ -81,13 +87,11 @@ export function HeroScrub({
 
   const drawFrame = useCallback((index: number) => {
     const canvas = canvasRef.current;
-    const entry = cacheRef.current[index];
-    if (!canvas || !entry || !entry.img || !entry.loaded) return;
-    const ctx =
-      ctxRef.current ??
-      canvas.getContext("2d", { alpha: false, desynchronized: true });
+    if (!canvas) return;
+    const ctx = ctxRef.current;
     if (!ctx) return;
-    ctxRef.current = ctx;
+    const entry = cacheRef.current[index];
+    if (!entry || !entry.img || !entry.loaded) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(entry.img, 0, 0, canvas.width, canvas.height);
@@ -120,11 +124,14 @@ export function HeroScrub({
   const loadFrame = useCallback(
     async (i: number) => {
       const cache = cacheRef.current;
-      if (!cache[i]) cache[i] = { img: null, loaded: false, decoding: false };
+      if (!cache[i])
+        cache[i] = { img: null, loaded: false, decoding: false, attempts: 0 };
       const entry = cache[i];
       if (entry.loaded || entry.img || entry.decoding) return;
+      if (entry.attempts >= MAX_ATTEMPTS) return;
 
       entry.decoding = true;
+      entry.attempts += 1;
       const img = new window.Image();
       img.decoding = "async";
       entry.img = img;
@@ -132,38 +139,47 @@ export function HeroScrub({
       try {
         img.src = frameUrl(i);
         await img.decode();
+        if (cacheRef.current[i] !== entry) return;
         entry.loaded = true;
         entry.decoding = false;
-        loadedCountRef.current += 1;
         bumpLoaded();
 
         if (!readyRef.current && isWindowReady(frameIdxRef.current)) {
           readyRef.current = true;
-          setWindowReady(true);
-        }
-
-        if (!allLoadedRef.current && loadedCountRef.current >= frameCount) {
-          allLoadedRef.current = true;
         }
 
         if (i === frameIdxRef.current) drawFrame(i);
-      } catch {
+      } catch (err) {
+        if (cacheRef.current[i] !== entry) return;
+        console.warn(
+          `[hero] frame FAILED ${i} ${frameUrl(i)} attempt ${entry.attempts}/${MAX_ATTEMPTS}:`,
+          err
+        );
         entry.decoding = false;
+        entry.img = null;
+        entry.loaded = false;
+        if (entry.attempts < MAX_ATTEMPTS) {
+          window.setTimeout(() => loadFrame(i), 500 * entry.attempts);
+        } else {
+          setFailedCount((c) => c + 1);
+        }
       }
     },
-    [drawFrame, isWindowReady, frameUrl, bumpLoaded]
+    [drawFrame, isWindowReady, frameUrl, bumpLoaded, frameCount]
   );
 
   const requestWindow = useCallback(
     (idx: number, radius = BUFFER) => {
-      const min = Math.max(0, idx - radius);
-      const max = Math.min(frameCount - 1, idx + radius);
+      const center = Math.round(idx);
+      const min = Math.max(0, center - radius);
+      const max = Math.min(frameCount - 1, center + radius);
       for (let i = min; i <= max; i++) loadFrame(i);
 
-      if (loadedCountRef.current >= frameCount) return;
+      if (scrollLockedRef.current || loadedCountRef.current >= frameCount)
+        return;
 
-      const keepMin = Math.max(0, idx - BUFFER * 2);
-      const keepMax = Math.min(frameCount - 1, idx + BUFFER * 2);
+      const keepMin = Math.max(0, center - BUFFER * 2);
+      const keepMax = Math.min(frameCount - 1, center + BUFFER * 2);
       for (let i = 0; i < frameCount; i++) {
         if (i >= keepMin && i <= keepMax) continue;
         const entry = cacheRef.current[i];
@@ -189,13 +205,15 @@ export function HeroScrub({
     canvas.height = Math.max(1, Math.round(vh * f));
     canvas.style.width = "100%";
     canvas.style.height = "100%";
-    ctxRef.current = null;
+    ctxRef.current = canvas.getContext("2d");
     drawFrame(frameIdxRef.current);
   }, [drawFrame]);
 
-useEffect(() => {
+  useEffect(() => {
     if (reduced) {
       setIsReady(true);
+      scrollLockedRef.current = false;
+      document.body.style.overflow = "";
       return;
     }
 
@@ -203,7 +221,19 @@ useEffect(() => {
       img: null,
       loaded: false,
       decoding: false,
+      attempts: 0,
     }));
+    loadedCountRef.current = 0;
+    readyRef.current = false;
+    lastDrawnIdxRef.current = -1;
+    targetIdxRef.current = 0;
+    frameIdxRef.current = 0;
+    setLoaded(0);
+    setFailedCount(0);
+    setIsReady(false);
+
+    document.body.style.overflow = "hidden";
+    scrollLockedRef.current = true;
 
     for (let i = 0; i < Math.min(INITIAL_PRELOAD, frameCount); i++) {
       loadFrame(i);
@@ -219,20 +249,21 @@ useEffect(() => {
     let idleTimer = 0;
     let cancelled = false;
 
-    // Main animation loop - handles interpolation and drawing
+    // Single RAF loop - interpolation + drawing
     const animationLoop = () => {
       if (cancelled) return;
-      
-      // Smooth interpolation toward target frame
-      frameIdxRef.current += (targetIdxRef.current - frameIdxRef.current) * 0.2;
-      
-      // Draw the current frame
+
+      frameIdxRef.current += (targetIdxRef.current - frameIdxRef.current) * 0.35;
+      if (Math.abs(targetIdxRef.current - frameIdxRef.current) < 0.5) {
+        frameIdxRef.current = targetIdxRef.current;
+      }
+
       const idx = Math.round(frameIdxRef.current);
       if (idx !== lastDrawnIdxRef.current) {
         lastDrawnIdxRef.current = idx;
         drawFrame(idx);
       }
-      
+
       rafRef.current = requestAnimationFrame(animationLoop);
     };
     rafRef.current = requestAnimationFrame(animationLoop);
@@ -268,6 +299,7 @@ useEffect(() => {
         import("gsap"),
         import("gsap/ScrollTrigger"),
       ]);
+      if (cancelled) return;
       gsap.registerPlugin(ScrollTrigger);
 
       const frameProxy = { current: 0 };
@@ -298,6 +330,13 @@ useEffect(() => {
       };
 
       ctx = gsap.context(() => {
+        const syncFrameFromProxy = () => {
+          targetIdxRef.current = Math.round(frameProxy.current);
+          const span = frameNumRef.current;
+          if (span)
+            span.textContent = `Frame ${String(targetIdxRef.current + 1).padStart(3, "0")} / ${String(frameCount).padStart(3, "0")}`;
+        };
+
         const tl = gsap.timeline({
           scrollTrigger: {
             trigger: sectionRef.current,
@@ -305,13 +344,10 @@ useEffect(() => {
             end: "bottom bottom",
             scrub: 0.5,
             onUpdate: (self: { progress: number }) => {
-              targetIdxRef.current = Math.round(frameProxy.current);
+              syncFrameFromProxy();
               const p = self.progress;
               updateHud(p);
               scheduleProgress(p);
-              const span = frameNumRef.current;
-              if (span)
-                span.textContent = String(targetIdxRef.current + 1).padStart(3, "0");
               touchWindow(targetIdxRef.current);
             },
           },
@@ -319,16 +355,33 @@ useEffect(() => {
 
         tl.to(
           frameProxy,
-          { current: frameCount - 1, ease: "none", duration: 1 },
+          {
+            current: frameCount - 1,
+            ease: "none",
+            duration: 1,
+            // The scrub tween keeps settling after scroll events stop;
+            // keep target frame in sync with it, not just with onUpdate.
+            onUpdate: syncFrameFromProxy,
+          },
           0
         );
       }, scope);
+      // Cleanup may have run while the module was loading; revert immediately
+      // in that case (otherwise the ScrollTrigger leaks).
+      if (cancelled && ctx) {
+        ctx.revert();
+        ctx = null;
+      }
     };
     initScrollTrigger();
 
     const checkReady = () => {
-      if (windowReady && !isReady) {
+      if (loadedCountRef.current >= frameCount && scrollLockedRef.current) {
+        scrollLockedRef.current = false;
+        document.body.style.overflow = "";
         setIsReady(true);
+        // Explicitly draw first frame when ready
+        drawFrame(0);
       }
     };
     const readyInterval = window.setInterval(checkReady, 100);
@@ -355,53 +408,50 @@ useEffect(() => {
     resizeCanvas,
     drawFrame,
     needsProgressState,
-    windowReady,
     loadFrame,
   ]);
-
-  useEffect(() => {
-    if (windowReady && !isReady) {
-      setIsReady(true);
-    }
-  }, [windowReady, isReady]);
-
-  useEffect(() => {
-    const interpolate = () => {
-      frameIdxRef.current += (targetIdxRef.current - frameIdxRef.current) * 0.35;
-      if (Math.abs(targetIdxRef.current - frameIdxRef.current) < 0.5) {
-        frameIdxRef.current = targetIdxRef.current;
-      }
-      const idx = Math.round(frameIdxRef.current);
-      if (idx !== lastDrawnIdxRef.current) {
-        lastDrawnIdxRef.current = idx;
-        drawFrame(idx);
-      }
-      rafRef.current = requestAnimationFrame(interpolate);
-    };
-    if (!reduced) {
-      rafRef.current = requestAnimationFrame(interpolate);
-    }
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [reduced, drawFrame]);
 
   const loadPct = Math.round((loaded / frameCount) * 100);
 
   return (
-    <section
-      ref={sectionRef}
-      id={id}
-      className={
-        reduced
-          ? "relative h-screen bg-ink"
-          : "relative h-[420vh] bg-ink"
-      }
-      style={{ opacity: isReady || reduced ? 1 : 0, transition: "opacity 300ms ease-out" }}
-    >
+    <>
+      {/* Loading overlay — sibling of the section so the section's
+          pre-ready opacity gate cannot hide it. */}
+      {!isReady && !reduced && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink"
+          style={{ transition: "opacity 300ms ease-out" }}
+        >
+          <div className="text-center">
+            <div className="mb-4 h-8 w-8 mx-auto border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+            <div className="mb-2 text-sm uppercase tracking-[0.3em] text-fg/60 font-mono">
+              Loading Film
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.3em] text-fg/40 font-mono">
+              {loadPct}%
+            </div>
+            {failedCount > 0 && (
+              <div className="mt-2 text-[10px] uppercase tracking-[0.3em] text-red-400/80 font-mono">
+                {failedCount} frame{failedCount === 1 ? "" : "s"} failed
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <section
+        ref={sectionRef}
+        id={id}
+        className={
+          reduced
+            ? "relative h-screen bg-ink"
+            : "relative h-[420vh] bg-ink"
+        }
+        style={{ opacity: isReady || reduced ? 1 : 0, transition: "opacity 300ms ease-out" }}
+      >
       <div
         ref={pinRef}
         className="sticky top-0 h-screen overflow-hidden"
       >
-        {/* Backdrop */}
         <div className="absolute inset-0 bg-ink" />
         <div
           className="absolute inset-0"
@@ -411,7 +461,6 @@ useEffect(() => {
           }}
         />
 
-        {/* Full-screen stage */}
         <div ref={cardRef} className="absolute inset-0 overflow-hidden">
           {reduced ? (
             <Image
@@ -528,25 +577,8 @@ useEffect(() => {
             </svg>
           </span>
         </div>
-
-        {/* Loading indicator - full screen overlay until ready */}
-        {!isReady && !reduced && (
-          <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-ink/95 backdrop-blur-sm"
-            style={{ transition: "opacity 300ms ease-out" }}
-          >
-            <div className="text-center">
-              <div className="mb-4 h-8 w-8 mx-auto border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
-              <div className="mb-2 text-sm uppercase tracking-[0.3em] text-fg/60 font-mono">
-                Loading Film
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.3em] text-fg/40 font-mono">
-                {loadPct}%
-              </div>
-            </div>
-          </div>
-        )}
       </div>
-    </section>
+      </section>
+    </>
   );
 }
