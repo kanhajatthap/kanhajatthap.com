@@ -2,64 +2,57 @@
 
 import { useSyncExternalStore, type CSSProperties } from "react";
 import { HeroScrub } from "@/components/ui/hero-scrub";
-import {
-  FaGlobe,
-  FaWordpress,
-  FaReact,
-  FaPalette,
-  FaBolt,
-} from "react-icons/fa";
 
 const FRAME_URL = (i: number) =>
   `/frames-hero/frame_${String(i + 1).padStart(4, "0")}.webp`;
 
-const SERVICES = [
-  {
-    id: "01",
-    title: "Web Development",
-    desc: "Fast, secure, and scalable websites built with modern, battle-tested tooling.",
-    icon: FaGlobe,
-    accent: "#fbbf24",
-    glow: "rgba(251,191,36,0.5)",
-    tags: ["React", "Next.js", "Tailwind", "Vercel"],
-  },
-  {
-    id: "02",
-    title: "WordPress",
-    desc: "Fully custom WordPress builds with Elementor, WooCommerce, and ACF.",
-    icon: FaWordpress,
-    accent: "#fbbf24",
-    glow: "rgba(251,191,36,0.5)",
-    tags: ["Elementor", "WooCommerce", "ACF"],
-  },
-  {
-    id: "03",
-    title: "React & Next.js",
-    desc: "Modern frontend with React and Next.js — blazing-fast and dynamic.",
-    icon: FaReact,
-    accent: "#fbbf24",
-    glow: "rgba(251,191,36,0.5)",
-    tags: ["SPA", "SSR / SSG", "Motion"],
-  },
-  {
-    id: "04",
-    title: "UI / UX Design",
-    desc: "Visually stunning interfaces designed to improve engagement and conversion.",
-    icon: FaPalette,
-    accent: "#fbbf24",
-    glow: "rgba(251,191,36,0.5)",
-    tags: ["Figma", "Design Systems", "Prototypes"],
-  },
-  {
-    id: "05",
-    title: "Performance",
-    desc: "Core Web Vitals, image optimization and code-splitting for lightning-fast loads.",
-    icon: FaBolt,
-    accent: "#fbbf24",
-    glow: "rgba(251,191,36,0.5)",
-    tags: ["Lighthouse 100", "Lazy Loading", "Splitting"],
-  },
-];
+// const SERVICES = [
+//   {
+//     id: "01",
+//     title: "Web Development",
+//     desc: "Fast, secure, and scalable websites built with modern, battle-tested tooling.",
+//     icon: FaGlobe,
+//     accent: "#fbbf24",
+//     glow: "rgba(251,191,36,0.5)",
+//     tags: ["React", "Next.js", "Tailwind", "Vercel"],
+//   },
+//   {
+//     id: "02",
+//     title: "WordPress",
+//     desc: "Fully custom WordPress builds with Elementor, WooCommerce, and ACF.",
+//     icon: FaWordpress,
+//     accent: "#fbbf24",
+//     glow: "rgba(251,191,36,0.5)",
+//     tags: ["Elementor", "WooCommerce", "ACF"],
+//   },
+//   {
+//     id: "03",
+//     title: "React & Next.js",
+//     desc: "Modern frontend with React and Next.js — blazing-fast and dynamic.",
+//     icon: FaReact,
+//     accent: "#fbbf24",
+//     glow: "rgba(251,191,36,0.5)",
+//     tags: ["SPA", "SSR / SSG", "Motion"],
+//   },
+//   {
+//     id: "04",
+//     title: "UI / UX Design",
+//     desc: "Visually stunning interfaces designed to improve engagement and conversion.",
+//     icon: FaPalette,
+//     accent: "#fbbf24",
+//     glow: "rgba(251,191,36,0.5)",
+//     tags: ["Figma", "Design Systems", "Prototypes"],
+//   },
+//   {
+//     id: "05",
+//     title: "Performance",
+//     desc: "Core Web Vitals, image optimization and code-splitting for lightning-fast loads.",
+//     icon: FaBolt,
+//     accent: "#fbbf24",
+//     glow: "rgba(251,191,36,0.5)",
+//     tags: ["Lighthouse 100", "Lazy Loading", "Splitting"],
+//   },
+// ];
 
 function subscribeReduced(callback: () => void) {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -117,7 +110,7 @@ export default function Hero() {
   return (
     <HeroScrub
       id="home"
-      frameCount={480}
+      frameCount={450}
       frameUrl={FRAME_URL}
       titleTop="KANHA"
       titleBottom="JATTHAP"
@@ -193,141 +186,54 @@ export default function Hero() {
             </div>
           </div> */}
 
-          {/* ============================================================
-              Services — the 480 frames are divided equally (96 each). Each
-              service rides up from the bottom to the top of the screen
-              during its own frame slice, like an overlay in the video.
-          ============================================================ */}
-          <Service
-            progress={progress}
-            reduced={reduced}
-            index={0}
-            count={SERVICES.length}
-            className="left-[6%] md:left-[10%]"
-            service={SERVICES[0]}
-          />
-          <Service
-            progress={progress}
-            reduced={reduced}
-            index={1}
-            count={SERVICES.length}
-            className="right-[6%] md:right-[10%]"
-            service={SERVICES[1]}
-          />
-          <Service
-            progress={progress}
-            reduced={reduced}
-            index={2}
-            count={SERVICES.length}
-            className="left-[8%] md:left-[14%]"
-            service={SERVICES[2]}
-          />
-          <Service
-            progress={progress}
-            reduced={reduced}
-            index={3}
-            count={SERVICES.length}
-            className="right-[7%] md:right-[11%]"
-            service={SERVICES[3]}
-          />
-          <Service
-            progress={progress}
-            reduced={reduced}
-            index={4}
-            count={SERVICES.length}
-            className="left-1/2 -translate-x-1/2"
-            service={SERVICES[4]}
-          />
-        </div>
+           {/* ============================================================
+               Services — the 450 frames are divided equally (90 each). Each
+               service rides up from the bottom to the top of the screen
+               during its own frame slice, like an overlay in the video.
+               (commented out — frame-based animation only)
+           ============================================================ */}
+           {/* <Service
+             progress={progress}
+             reduced={reduced}
+             index={0}
+             count={SERVICES.length}
+             className="left-[6%] md:left-[10%]"
+             service={SERVICES[0]}
+           />
+           <Service
+             progress={progress}
+             reduced={reduced}
+             index={1}
+             count={SERVICES.length}
+             className="right-[6%] md:right-[10%]"
+             service={SERVICES[1]}
+           />
+           <Service
+             progress={progress}
+             reduced={reduced}
+             index={2}
+             count={SERVICES.length}
+             className="left-[8%] md:left-[14%]"
+             service={SERVICES[2]}
+           />
+           <Service
+             progress={progress}
+             reduced={reduced}
+             index={3}
+             count={SERVICES.length}
+             className="right-[7%] md:right-[11%]"
+             service={SERVICES[3]}
+           />
+           <Service
+             progress={progress}
+             reduced={reduced}
+             index={4}
+             count={SERVICES.length}
+             className="left-1/2 -translate-x-1/2"
+             service={SERVICES[4]}
+           /> */}
+         </div>
       )}
     </HeroScrub>
-  );
-}
-
-function Service({
-  progress,
-  reduced,
-  index,
-  count,
-  className,
-  service,
-}: {
-  progress: number;
-  reduced: boolean;
-  index: number;
-  count: number;
-  className: string;
-  service: (typeof SERVICES)[number];
-}) {
-  const style: CSSProperties = reduced
-    ? { opacity: 1, transform: "translateY(0px)" }
-    : serviceMotion(progress, index, count);
-
-  const Icon = service.icon;
-
-  return (
-    // Outer wrapper handles the horizontal lane only (top-0 keeps the base at
-    // the very top of the screen so the inner vertical sweep starts from the
-    // bottom and ends at the top, never from the middle).
-    <div
-      className={`pointer-events-none absolute top-0 max-w-[16rem] sm:max-w-[20rem] md:max-w-sm ${className}`}
-    >
-      {/* Inner element carries the vertical ride + visibility */}
-      <div style={{ ...style, willChange: "transform, opacity" }}>
-        {/* Minimal editorial — no box, pure typography over the film */}
-        <div className="relative">
-          {/* Accent index + icon header */}
-          <div className="flex items-center gap-3">
-            <span
-              className="grid h-9 w-9 place-items-center rounded-full border text-sm md:h-10 md:w-10 md:text-base"
-              style={{
-                color: service.accent,
-                borderColor: `${service.accent}55`,
-                background: `${service.accent}14`,
-                boxShadow: `0 0 24px ${service.glow}`,
-              }}
-            >
-              <Icon />
-            </span>
-            <span
-              className="font-mono text-[11px] uppercase tracking-[0.35em]"
-              style={{
-                color: service.accent,
-                textShadow: "0 2px 16px rgba(0,0,0,0.8)",
-              }}
-            >
-              {service.id}
-            </span>
-          </div>
-
-          {/* Big editorial title */}
-          <h3
-            className="mt-4 text-[clamp(2rem,4.5vw,3.4rem)] font-bold leading-[1.02] tracking-tight text-fg"
-            style={{
-              fontFamily: "var(--font-playfair), serif",
-              textShadow: "0 4px 40px rgba(0,0,0,0.85)",
-            }}
-          >
-            {service.title}
-          </h3>
-
-          {/* Divider */}
-          <div
-            className="mt-4 h-px w-12"
-            style={{
-              background: `linear-gradient(90deg, ${service.accent}, transparent)`,
-            }}
-          />
-
-          {/* One-line desc */}
-          <p
-            className="mt-4 max-w-xs text-sm leading-relaxed text-fg/70 md:text-base"
-            style={{ textShadow: "0 2px 20px rgba(0,0,0,0.9)" }}
-          >
-            {service.desc}
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }

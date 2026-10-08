@@ -26,9 +26,10 @@ type HeroScrubProps = {
   children?: ReactNode | ((progress: number) => ReactNode);
 };
 
-type FrameEntry = { img: HTMLImageElement | null; loaded: boolean };
+type FrameEntry = { img: HTMLImageElement | null; loaded: boolean; decoding: boolean };
 
-const BUFFER = 12;
+const BUFFER = 24;
+const INITIAL_PRELOAD = 30;
 
 function subscribeReduced(callback: () => void) {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -56,16 +57,19 @@ export function HeroScrub({
   const lastDrawnIdxRef = useRef(-1);
   const cacheRef = useRef<FrameEntry[]>([]);
   const frameIdxRef = useRef(0);
+  const targetIdxRef = useRef(0);
   const frameNumRef = useRef<HTMLSpanElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const scrollHintRef = useRef<HTMLSpanElement>(null);
   const progressRef = useRef(0);
   const loadedCountRef = useRef(0);
   const readyRef = useRef(false);
+  const allLoadedRef = useRef(false);
 
   const [progress, setProgress] = useState(0);
   const [loaded, setLoaded] = useState(0);
   const [windowReady, setWindowReady] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   const needsProgressState =
     typeof children === "function" || titleMotion !== undefined;
@@ -78,30 +82,15 @@ export function HeroScrub({
   const drawFrame = useCallback((index: number) => {
     const canvas = canvasRef.current;
     const entry = cacheRef.current[index];
-    if (
-      !canvas ||
-      !entry ||
-      !entry.img ||
-      !entry.loaded ||
-      !entry.img.naturalWidth
-    )
-      return;
+    if (!canvas || !entry || !entry.img || !entry.loaded) return;
     const ctx =
       ctxRef.current ??
       canvas.getContext("2d", { alpha: false, desynchronized: true });
     if (!ctx) return;
     ctxRef.current = ctx;
 
-    const cw = canvas.width;
-    const ch = canvas.height;
-    const iw = entry.img.naturalWidth;
-    const ih = entry.img.naturalHeight;
-    const scale = Math.max(cw / iw, ch / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(entry.img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(entry.img, 0, 0, canvas.width, canvas.height);
   }, []);
 
   const isWindowReady = useCallback(
@@ -129,28 +118,38 @@ export function HeroScrub({
   }, []);
 
   const loadFrame = useCallback(
-    (i: number) => {
+    async (i: number) => {
       const cache = cacheRef.current;
-      if (!cache[i]) cache[i] = { img: null, loaded: false };
+      if (!cache[i]) cache[i] = { img: null, loaded: false, decoding: false };
       const entry = cache[i];
-      if (entry.loaded || entry.img) return;
+      if (entry.loaded || entry.img || entry.decoding) return;
 
+      entry.decoding = true;
       const img = new window.Image();
       img.decoding = "async";
       entry.img = img;
-      img.onload = () => {
+
+      try {
+        img.src = frameUrl(i);
+        await img.decode();
         entry.loaded = true;
+        entry.decoding = false;
         loadedCountRef.current += 1;
         bumpLoaded();
+
         if (!readyRef.current && isWindowReady(frameIdxRef.current)) {
           readyRef.current = true;
           setWindowReady(true);
         }
-        // Only draw if this is the currently visible frame — drawing every
-        // loaded frame (including far-away preloads) wastes main-thread time.
+
+        if (!allLoadedRef.current && loadedCountRef.current >= frameCount) {
+          allLoadedRef.current = true;
+        }
+
         if (i === frameIdxRef.current) drawFrame(i);
-      };
-      img.src = frameUrl(i);
+      } catch {
+        entry.decoding = false;
+      }
     },
     [drawFrame, isWindowReady, frameUrl, bumpLoaded]
   );
@@ -161,8 +160,6 @@ export function HeroScrub({
       const max = Math.min(frameCount - 1, idx + radius);
       for (let i = min; i <= max; i++) loadFrame(i);
 
-      // Once every frame is preloaded, stop evicting — eviction would force a
-      // cold re-download + re-decode the moment the user scrolls back.
       if (loadedCountRef.current >= frameCount) return;
 
       const keepMin = Math.max(0, idx - BUFFER * 2);
@@ -174,6 +171,7 @@ export function HeroScrub({
           entry.img.src = "";
           entry.img = null;
           entry.loaded = false;
+          entry.decoding = false;
         }
       }
     },
@@ -195,14 +193,22 @@ export function HeroScrub({
     drawFrame(frameIdxRef.current);
   }, [drawFrame]);
 
-  useEffect(() => {
-    if (reduced) return;
+useEffect(() => {
+    if (reduced) {
+      setIsReady(true);
+      return;
+    }
 
     cacheRef.current = Array.from({ length: frameCount }, () => ({
       img: null,
       loaded: false,
+      decoding: false,
     }));
-    requestWindow(0);
+
+    for (let i = 0; i < Math.min(INITIAL_PRELOAD, frameCount); i++) {
+      loadFrame(i);
+    }
+
     resizeCanvas();
 
     const scope = sectionRef.current;
@@ -213,47 +219,50 @@ export function HeroScrub({
     let idleTimer = 0;
     let cancelled = false;
 
-    // Persistent draw loop — reads the latest frame index every rAF and draws
-    // it. No throttling, no cancel/re-request churn, no dropped frames.
-    const drawLoop = () => {
+    // Main animation loop - handles interpolation and drawing
+    const animationLoop = () => {
       if (cancelled) return;
-      const idx = frameIdxRef.current;
+      
+      // Smooth interpolation toward target frame
+      frameIdxRef.current += (targetIdxRef.current - frameIdxRef.current) * 0.2;
+      
+      // Draw the current frame
+      const idx = Math.round(frameIdxRef.current);
       if (idx !== lastDrawnIdxRef.current) {
         lastDrawnIdxRef.current = idx;
         drawFrame(idx);
       }
-      rafRef.current = requestAnimationFrame(drawLoop);
+      
+      rafRef.current = requestAnimationFrame(animationLoop);
     };
-    rafRef.current = requestAnimationFrame(drawLoop);
+    rafRef.current = requestAnimationFrame(animationLoop);
 
-    // Preload every remaining frame in the background (small chunks) so
-    // scrolling never stalls on a cold network fetch.
     let preloadTimer = 0;
     const preloadAll = () => {
       const cache = cacheRef.current;
       const queue: number[] = [];
       for (let i = 0; i < frameCount; i++) {
         const e = cache[i];
-        if (e && !e.loaded && !e.img) queue.push(i);
+        if (e && !e.loaded && !e.img && !e.decoding) queue.push(i);
       }
       let cursor = 0;
       const step = () => {
         if (cancelled) return;
-        const end = Math.min(queue.length, cursor + 5);
+        const end = Math.min(queue.length, cursor + 8);
         while (cursor < end) {
           loadFrame(queue[cursor]);
           cursor++;
         }
-        if (cursor < queue.length) preloadTimer = window.setTimeout(step, 120);
+        if (cursor < queue.length) preloadTimer = window.setTimeout(step, 80);
       };
       step();
     };
-    const preloadDelay = window.setTimeout(preloadAll, 400);
+    const preloadDelay = window.setTimeout(preloadAll, 300);
 
     const onResize = () => resizeCanvas();
     window.addEventListener("resize", onResize);
 
-    (async () => {
+    const initScrollTrigger = async () => {
       if (cancelled) return;
       const [{ default: gsap }, { default: ScrollTrigger }] = await Promise.all([
         import("gsap"),
@@ -284,7 +293,7 @@ export function HeroScrub({
         clearTimeout(idleTimer);
         idleTimer = window.setTimeout(() => {
           requestWindow(frameIdxRef.current, BUFFER);
-        }, 250);
+        }, 200);
         requestWindow(idx, 1);
       };
 
@@ -294,17 +303,16 @@ export function HeroScrub({
             trigger: sectionRef.current,
             start: "top top",
             end: "bottom bottom",
-            scrub: true,
+            scrub: 0.5,
             onUpdate: (self: { progress: number }) => {
-              const idx = Math.round(frameProxy.current);
-              frameIdxRef.current = idx;
+              targetIdxRef.current = Math.round(frameProxy.current);
               const p = self.progress;
               updateHud(p);
               scheduleProgress(p);
               const span = frameNumRef.current;
               if (span)
-                span.textContent = String(idx + 1).padStart(3, "0");
-              touchWindow(idx);
+                span.textContent = String(targetIdxRef.current + 1).padStart(3, "0");
+              touchWindow(targetIdxRef.current);
             },
           },
         });
@@ -315,7 +323,15 @@ export function HeroScrub({
           0
         );
       }, scope);
-    })();
+    };
+    initScrollTrigger();
+
+    const checkReady = () => {
+      if (windowReady && !isReady) {
+        setIsReady(true);
+      }
+    };
+    const readyInterval = window.setInterval(checkReady, 100);
 
     return () => {
       cancelled = true;
@@ -325,6 +341,7 @@ export function HeroScrub({
       clearTimeout(idleTimer);
       clearTimeout(preloadTimer);
       clearTimeout(preloadDelay);
+      clearInterval(readyInterval);
       window.removeEventListener("resize", onResize);
       if (ctx) ctx.revert();
       cacheRef.current.forEach((entry) => {
@@ -338,7 +355,34 @@ export function HeroScrub({
     resizeCanvas,
     drawFrame,
     needsProgressState,
+    windowReady,
+    loadFrame,
   ]);
+
+  useEffect(() => {
+    if (windowReady && !isReady) {
+      setIsReady(true);
+    }
+  }, [windowReady, isReady]);
+
+  useEffect(() => {
+    const interpolate = () => {
+      frameIdxRef.current += (targetIdxRef.current - frameIdxRef.current) * 0.35;
+      if (Math.abs(targetIdxRef.current - frameIdxRef.current) < 0.5) {
+        frameIdxRef.current = targetIdxRef.current;
+      }
+      const idx = Math.round(frameIdxRef.current);
+      if (idx !== lastDrawnIdxRef.current) {
+        lastDrawnIdxRef.current = idx;
+        drawFrame(idx);
+      }
+      rafRef.current = requestAnimationFrame(interpolate);
+    };
+    if (!reduced) {
+      rafRef.current = requestAnimationFrame(interpolate);
+    }
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [reduced, drawFrame]);
 
   const loadPct = Math.round((loaded / frameCount) * 100);
 
@@ -351,6 +395,7 @@ export function HeroScrub({
           ? "relative h-screen bg-ink"
           : "relative h-[420vh] bg-ink"
       }
+      style={{ opacity: isReady || reduced ? 1 : 0, transition: "opacity 300ms ease-out" }}
     >
       <div
         ref={pinRef}
@@ -434,10 +479,12 @@ export function HeroScrub({
           </div> */}
         </div>
 
-        {/* Fixed overlay content */}
-        <div className="pointer-events-none absolute inset-0 z-10">
-          {typeof children === "function" ? children(progress) : children}
-        </div>
+        {/* Fixed overlay content - only visible when ready */}
+        {(isReady || reduced) && (
+          <div className="pointer-events-none absolute inset-0 z-10">
+            {typeof children === "function" ? children(progress) : children}
+          </div>
+        )}
 
         {/* HUD */}
         <div
@@ -482,15 +529,21 @@ export function HeroScrub({
           </span>
         </div>
 
-        {/* Loading indicator */}
-        {!windowReady && !reduced && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-14 z-30 flex justify-center">
-            <span
-              className="rounded-full border border-fg/10 bg-fg/5 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-fg/60 backdrop-blur-md"
-              style={{ fontFamily: "var(--font-geist-mono), monospace" }}
-            >
-              Loading Film — {loadPct}%
-            </span>
+        {/* Loading indicator - full screen overlay until ready */}
+        {!isReady && !reduced && (
+          <div
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-ink/95 backdrop-blur-sm"
+            style={{ transition: "opacity 300ms ease-out" }}
+          >
+            <div className="text-center">
+              <div className="mb-4 h-8 w-8 mx-auto border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+              <div className="mb-2 text-sm uppercase tracking-[0.3em] text-fg/60 font-mono">
+                Loading Film
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-fg/40 font-mono">
+                {loadPct}%
+              </div>
+            </div>
           </div>
         )}
       </div>
