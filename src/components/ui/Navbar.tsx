@@ -100,8 +100,8 @@ export default function Navbar() {
       <header
         className={`fixed inset-x-0 top-0 z-50 transition-all duration-500 ${
           scrolled
-            ? "border-b border-fg/[0.06] bg-ink/80 backdrop-blur-xl"
-            : "border-b border-transparent bg-transparent"
+            ? "border-b border-fg/[0.06] bg-ink/90 backdrop-blur-xl supports-[backdrop-filter]:bg-ink/80"
+            : "border-b border-transparent bg-ink/60 backdrop-blur-sm supports-[backdrop-filter]:bg-ink/40"
         }`}
       >
         <nav

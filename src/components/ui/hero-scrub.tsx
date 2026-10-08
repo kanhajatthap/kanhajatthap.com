@@ -249,6 +249,15 @@ export function HeroScrub({
     let idleTimer = 0;
     let cancelled = false;
 
+    const setHeaderVar = () => {
+      const nav = document.querySelector("header nav");
+      const h = nav ? nav.getBoundingClientRect().height : 72;
+      const el = sectionRef.current;
+      if (el) el.style.setProperty("--header-h", `${Math.round(h)}px`);
+    };
+
+    setHeaderVar();
+
     // Single RAF loop - interpolation + drawing
     const animationLoop = () => {
       if (cancelled) return;
@@ -290,7 +299,10 @@ export function HeroScrub({
     };
     const preloadDelay = window.setTimeout(preloadAll, 300);
 
-    const onResize = () => resizeCanvas();
+    const onResize = () => {
+      resizeCanvas();
+      setHeaderVar();
+    };
     window.addEventListener("resize", onResize);
 
     const initScrollTrigger = async () => {
@@ -477,12 +489,13 @@ export function HeroScrub({
             ? "relative h-screen bg-ink"
             : "relative h-[420vh] bg-ink"
         }
-        style={{ opacity: isReady || reduced ? 1 : 0, transition: "opacity 300ms ease-out" }}
+        style={{ opacity: isReady || reduced ? 1 : 0, transition: "opacity 300ms ease-out", paddingTop: "var(--header-h, 72px)" }}
       >
-      <div
-        ref={pinRef}
-        className="sticky top-0 h-screen overflow-hidden"
-      >
+        <div
+          ref={pinRef}
+          className="sticky top-0 h-screen overflow-hidden"
+          style={{ marginTop: "calc(-1 * var(--header-h, 72px))" }}
+        >
         <div className="absolute inset-0 bg-ink" />
         <div
           className="absolute inset-0"
