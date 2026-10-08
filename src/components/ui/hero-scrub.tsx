@@ -419,21 +419,52 @@ export function HeroScrub({
           pre-ready opacity gate cannot hide it. */}
       {!isReady && !reduced && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink"
-          style={{ transition: "opacity 300ms ease-out" }}
+          className="fixed inset-0 z-[9999] bg-ink transition-opacity duration-700 ease-in-out"
         >
-          <div className="text-center">
-            <div className="mb-4 h-8 w-8 mx-auto border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
-            <div className="mb-2 text-sm uppercase tracking-[0.3em] text-fg/60 font-mono">
-              Loading Film
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(251,191,36,0.08)_0%,rgba(0,0,0,0)_70%)]" />
+          {/* Subtly decorative thin lines */}
+          <div className="pointer-events-none absolute top-0 left-8 h-px w-24 bg-gradient-to-r from-gold/30 to-transparent md:left-10" />
+          <div className="pointer-events-none absolute top-0 right-8 h-px w-24 bg-gradient-to-l from-gold/30 to-transparent md:right-10" />
+          <div className="pointer-events-none absolute left-0 top-8 h-24 w-px bg-gradient-to-b from-gold/30 to-transparent md:top-10" />
+          <div className="pointer-events-none absolute right-0 top-8 h-24 w-px bg-gradient-to-b from-gold/30 to-transparent md:top-10" />
+          <div className="pointer-events-none absolute bottom-0 left-8 h-px w-24 bg-gradient-to-r from-gold/30 to-transparent md:left-10" />
+          <div className="pointer-events-none absolute bottom-0 right-8 h-px w-24 bg-gradient-to-l from-gold/30 to-transparent md:right-10" />
+          <div className="pointer-events-none absolute right-0 bottom-8 h-24 w-px bg-gradient-to-t from-gold/30 to-transparent md:bottom-10" />
+          <div className="pointer-events-none absolute left-0 bottom-8 h-24 w-px bg-gradient-to-t from-gold/30 to-transparent md:bottom-10" />
+          {/* Subtly curved gold arcs */}
+          <div className="pointer-events-none absolute inset-0 opacity-[0.06] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+               style={{ background: "radial-gradient(120% 80% at 50% 20%, rgba(251,191,36,0.10) 0%, transparent 70%)" }} />
+          {/* Very subtle grain/noise (inexpensive CSS) */}
+          <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.04] mix-blend-soft-light">
+            <filter id="loader-noise">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" stitchTiles="stitch" />
+            </filter>
+            <rect width="100%" height="100%" filter="url(#loader-noise)" />
+          </svg>
+          {/* Center content */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
+            <div className="relative mb-10 md:mb-12">
+              <div className="absolute inset-0 rounded-full blur-[20px] opacity-40" style={{ background: "radial-gradient(circle, rgba(251,191,36,0.55) 0%, transparent 70%)" }} />
+              <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-gold/45 bg-gradient-to-b from-gold/12 to-transparent shadow-[0_0_140px_rgba(251,191,36,0.16)] md:h-28 md:w-28">
+                <span className="font-serif text-5xl md:text-6xl font-medium leading-none text-gold [text-shadow:0_0_70px_rgba(251,191,36,0.55)]">K</span>
+              </div>
             </div>
-            <div className="text-[10px] uppercase tracking-[0.3em] text-fg/40 font-mono">
-              {loadPct}%
+            <div className="mb-6 text-xs uppercase tracking-[0.5em] text-fg/55 font-mono md:mb-8">INITIALIZING EXPERIENCE</div>
+            <div className="mb-6 text-2xl md:text-3xl tracking-[0.25em] text-gold font-mono [text-shadow:0_0_45px_rgba(251,191,36,0.28)]">
+              {String(loaded).padStart(3, "0")} / {String(frameCount).padStart(3, "0")}
+            </div>
+            <div className="mb-8 h-px w-[80vw] max-w-[380px] bg-fg/10 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-gold via-amber-200 to-gold transition-[width] duration-300 ease-out" style={{ width: `${loadPct}%`, boxShadow: "0 0 22px rgba(251,191,36,0.55)" }} />
+            </div>
+            <div className="mb-10 text-[10px] uppercase tracking-[0.5em] text-fg/45 font-mono md:mb-12">LOADING FRAMES...</div>
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[9px] md:text-[10px] uppercase tracking-[0.3em] text-fg/35 font-mono px-4">
+              <div className="flex items-center gap-2"><span>FRAME CACHE</span><span className="text-fg/60">{String(loaded).padStart(3, "0")} / {String(frameCount).padStart(3, "0")}</span></div>
+              <div className="flex items-center gap-2"><span>ASSET LOADING</span><span className="text-fg/60">{loadPct}%</span></div>
+              <div className="flex items-center gap-2"><span>CANVAS</span><span className="text-fg/60">READY</span></div>
+              <div className="flex items-center gap-2"><span>RENDER ENGINE</span><span className="text-fg/60">READY</span></div>
             </div>
             {failedCount > 0 && (
-              <div className="mt-2 text-[10px] uppercase tracking-[0.3em] text-red-400/80 font-mono">
-                {failedCount} frame{failedCount === 1 ? "" : "s"} failed
-              </div>
+              <div className="mt-4 text-[10px] uppercase tracking-[0.3em] text-red-400/85 font-mono">{failedCount} frame{failedCount === 1 ? "" : "s"} failed</div>
             )}
           </div>
         </div>
